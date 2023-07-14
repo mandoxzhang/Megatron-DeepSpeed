@@ -474,7 +474,7 @@ class FP32Optimizer(MegatronOptimizer):
             optimizer, clip_grad, log_num_zeros_in_grad,
             params_have_main_grad)
 
-        self._scale = get_accelerator().FloatTensor([1.0])
+        self._scale = torch.FloatTensor([1.0]).to('musa')
 
 
     def zero_grad(self, set_to_none=True):

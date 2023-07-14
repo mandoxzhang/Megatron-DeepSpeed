@@ -69,10 +69,10 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
         grad = param.grad.detach()
         if grad_not_none:
             # Make sure the grads are in fp32
-            assert param.grad.type() == 'torch.{}.FloatTensor'.format(get_accelerator().device_name())
+            assert param.grad.type() == 'torch.privateuseone.FloatTensor'
             grads.append(grad)
         if grad_not_none and is_not_shared and is_not_tp_duplicate:
-            grads_for_norm.append(grad)
+            grads_for_norm.append(grad.cpu())
 
     # Norm parameters.
     max_norm = float(max_norm)
@@ -103,7 +103,8 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
                     False # no per-parameter norm
                 )
             else:
-                grad_norm = torch.norm(grads_for_norm,p=2.0)
+                grad_norm = torch.norm(grads_for_norm[0],p=2.0)
+                grad_norm = grad_norm.to('musa')
             # Since we will be summing across data parallel groups,
             # we need the pow(norm-type).
             total_norm = grad_norm ** norm_type
@@ -128,8 +129,9 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type=2):
                                 [grads, grads],
                                 clip_coeff)
         else:
-            for g in grads:
-                g.detach().mul_(clip_coeff.to(g.device))
+            pass
+            # for g in grads:
+            #     g.detach().mul_(clip_coeff.to(g.device))
 
     return total_norm
 

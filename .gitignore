@@ -13,3 +13,6 @@ dist/
 
 # AML workspace config file
 *config.json
+.vscode/
+start_debug.py
+start_train.py

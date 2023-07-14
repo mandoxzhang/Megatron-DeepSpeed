@@ -14,8 +14,55 @@
 # limitations under the License.
 
 """Pretrain GPT"""
+import argparse
+import json
+import math
+import os
+import time
+os.environ['MUSA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
+import random
+from itertools import chain
+from pathlib import Path
+
+import datasets
+import torch
+import torch_musa
+# from utils import Logger, MultiTimer, get_mem_info
+# from accelerate import Accelerator, DistributedType
+# from accelerate.logging import get_logger
+# from accelerate.utils import set_seed
+from datasets import load_dataset
+from huggingface_hub import Repository, create_repo
+from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
+
+import transformers
+from transformers import (
+    CONFIG_MAPPING,
+    MODEL_MAPPING,
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    SchedulerType,
+    default_data_collator,
+    get_scheduler,
+)
+from transformers.utils import check_min_version, get_full_repo_name, send_example_telemetry
+from transformers.utils.versions import require_version
+
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
+# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+check_min_version("4.28.0")
+
+require_version("datasets>=1.8.0", "To fix: pip install -r examexples/pytorch/language-modeling/requirements.txt")
+
+MODEL_CONFIG_CLASSES = list(MODEL_MAPPING.keys())
+MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
+from transformers import GPT2Config, GPT2LMHeadModel, LlamaTokenizer
 
 import torch
+import torch_musa
 import math
 from functools import partial
 from megatron import get_args
@@ -42,7 +89,7 @@ def model_provider(pre_process=True, post_process=True):
     """Build the model."""
 
     print_rank_0('building GPT model ...')
-    see_memory_usage(f"Before Building Model", force=True)
+    # see_memory_usage(f"Before Building Model", force=True)
 
     args = get_args()
     with deepspeed.zero.Init(data_parallel_group=mpu.get_data_parallel_group(),
@@ -50,7 +97,7 @@ def model_provider(pre_process=True, post_process=True):
                              config_dict_or_path=args.deepspeed_config,
                              enabled=args.zero_stage == 3,
                              mpu=mpu):
-        if args.deepspeed and not args.no_pipeline_parallel:
+        if False: #args.deepspeed and not args.no_pipeline_parallel:
             model = GPTModelPipe(
                 num_tokentypes=0,
                 parallel_output=True
@@ -83,35 +130,42 @@ def model_provider(pre_process=True, post_process=True):
                 pre_process=pre_process,
                 post_process=post_process
             )
-    see_memory_usage(f"After Building Model", force=True)
+    # see_memory_usage(f"After Building Model", force=True)
     return model
 
 
 def get_batch(data_iterator):
     """Generate a batch"""
     args = get_args()
-    tokenizer = get_tokenizer()
+    # tokenizer = get_tokenizer()
 
     # Items and their type.
     keys = ['text']
     datatype = torch.int64
 
     # Broadcast data.
-    if data_iterator is not None:
-        data = next(data_iterator)
-    else:
-        data = None
-    data_b = mpu.broadcast_data(keys, data, datatype)
+    # if data_iterator is not None:
+    #     data = next(data_iterator)
+    # else:
+    #     data = None
+    # data_b = mpu.broadcast_data(keys, data, datatype)
 
     # Unpack.
-    tokens_ = data_b['text'].long()
-    labels = tokens_[:, 1:].contiguous()
-    tokens = tokens_[:, :-1].contiguous()
+    # tokens_ = data_b['text'].long()
+    # tokens_ = data['input_ids']
+    # labels = tokens_[:, 1:].contiguous().to('musa')
+    # tokens = tokens_[:, :-1].contiguous().to('musa')
+    tokens_ = torch.randint(low=0, high=32000, size=(
+            2,
+            1024,
+        ))
+    labels = tokens_[:, 1:].contiguous().to('musa')
+    tokens = tokens_[:, :-1].contiguous().to('musa')
 
     # Get the masks and postition ids.
     attention_mask, loss_mask, position_ids = get_ltor_masks_and_position_ids(
         tokens,
-        tokenizer.eod,
+        1,
         args.reset_position_ids,
         args.reset_attention_mask,
         args.eod_mask_loss)
@@ -281,17 +335,90 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
     print_rank_0('> building train, validation, and test datasets '
                  'for GPT ...')
-    train_ds, valid_ds, test_ds = build_train_valid_test_datasets(
-        data_prefix=args.data_path,
-        data_impl=args.data_impl,
-        splits_string=args.split,
-        train_valid_test_num_samples=train_val_test_num_samples,
-        seq_length=args.seq_length,
-        seed=args.seed,
-        skip_warmup=(not args.mmap_warmup))
+    # train_ds, valid_ds, test_ds = build_train_valid_test_datasets(
+    #     data_prefix=args.data_path,
+    #     data_impl=args.data_impl,
+    #     splits_string=args.split,
+    #     train_valid_test_num_samples=train_val_test_num_samples,
+    #     seq_length=args.seq_length,
+    #     seed=args.seed,
+    #     skip_warmup=(not args.mmap_warmup))
+    data_files = {}
+    data_files["train"] = '/home/mccxadmin/yehua/mccl_example/wiki2/wiki.train.raw'
+    data_files["validation"] = '/home/mccxadmin/yehua/mccl_example/wiki2/wiki.valid.raw'
+    data_files["test"] = '/home/mccxadmin/yehua/mccl_example/wiki2/wiki.test.raw'
+
+    raw_datasets = load_dataset('text', data_files=data_files)
     print_rank_0("> finished creating GPT datasets ...")
 
-    return train_ds, valid_ds, test_ds
+    column_names = raw_datasets["train"].column_names
+    text_column_name = "text" if "text" in column_names else column_names[0]
+    tokenizer = LlamaTokenizer.from_pretrained('/home/mccxadmin/yehua/mccl_example/llama_config')
+
+    def tokenize_function(examples):
+        return tokenizer(examples[text_column_name])
+
+    tokenized_datasets = raw_datasets.map(
+        tokenize_function,
+        batched=True,
+        num_proc=2,
+        remove_columns=column_names,
+        load_from_cache_file=True,
+        desc="Running tokenizer on dataset",
+    )
+
+    block_size = 1024
+
+    # Main data processing function that will concatenate all texts from our dataset and generate chunks of block_size.
+    def group_texts(examples):
+        # Concatenate all texts.
+        concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+        total_length = len(concatenated_examples[list(examples.keys())[0]])
+        # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
+        # customize this part to your needs.
+        if total_length >= block_size:
+            total_length = (total_length // block_size) * block_size
+        # Split by chunks of max_len.
+        result = {
+            k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
+            for k, t in concatenated_examples.items()
+        }
+        result["labels"] = result["input_ids"].copy()
+        return result
+
+    # Note that with `batched=True`, this map processes 1,000 texts together, so group_texts throws away a remainder
+    # for each of those groups of 1,000 texts. You can adjust that batch_size here but a higher value might be slower
+    # to preprocess.
+    #
+    # To speed up this part, we use multiprocessing. See the documentation of the map method for more information:
+    # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.map
+
+    lm_datasets = tokenized_datasets.map(
+        group_texts,
+        batched=True,
+        num_proc=2,
+        load_from_cache_file=True,
+        desc=f"Grouping texts in chunks of {block_size}",
+    )
+
+    train_dataset = lm_datasets["train"]
+    eval_dataset = lm_datasets["validation"]
+    test_dataset = lm_datasets["test"]
+
+    # Log a few random samples from the training set:
+
+    # DataLoaders creation:
+    train_ds = DataLoader(
+        train_dataset, sampler=DistributedSampler(train_dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank()), shuffle=False, collate_fn=default_data_collator, batch_size=2
+    )
+    valid_ds = DataLoader(
+        eval_dataset, sampler=DistributedSampler(eval_dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank()), collate_fn=default_data_collator, batch_size=2
+    )
+    test_ds = DataLoader(
+        test_dataset, sampler=DistributedSampler(test_dataset, num_replicas=dist.get_world_size(), rank=dist.get_rank()), collate_fn=default_data_collator, batch_size=2
+    )
+
+    return iter(train_ds), iter(valid_ds), iter(test_ds)
 
 
 def command_exists(cmd):
@@ -322,6 +449,10 @@ def git_ds_info():
 
 
 if __name__ == "__main__":
+    rank = int(os.environ['RANK'])
+    local_rank = int(os.environ['LOCAL_RANK'])
+    world_size = int(os.environ['WORLD_SIZE'])
+    # torch_musa.set_device(local_rank + 1)
     git_ds_info()
     pretrain(train_valid_test_datasets_provider, model_provider, forward_step,
              args_defaults={'tokenizer_type': 'GPT2BPETokenizer'},

@@ -20,7 +20,7 @@ from abc import abstractmethod
 
 from .bert_tokenization import FullTokenizer as FullBertTokenizer
 from .gpt2_tokenization import GPT2Tokenizer
-
+from transformers import LlamaTokenizer
 
 def build_tokenizer(args):
     """Initialize tokenizer."""
@@ -40,7 +40,8 @@ def build_tokenizer(args):
                                             vocab_extra_ids=args.vocab_extra_ids)
     elif args.tokenizer_type == 'GPT2BPETokenizer':
         assert args.merge_file is not None
-        tokenizer = _GPT2BPETokenizer(args.vocab_file, args.merge_file)
+        # tokenizer = _GPT2BPETokenizer(args.vocab_file, args.merge_file)
+        tokenizer = LlamaTokenizer.from_pretrained('/home/mccxadmin/yehua/mccl_example/llama_config')
     else:
         raise NotImplementedError('{} tokenizer is not '
                                   'implemented.'.format(args.tokenizer_type))

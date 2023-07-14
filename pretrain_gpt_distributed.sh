@@ -19,16 +19,69 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $
 export NCCL_PROTOS=2
 export NCCL_IB_HCA=^mlx5_3:1
 
+## GPT-3 Small 125M
+MODEL_SIZE=0.125
+NUM_LAYERS=12
+HIDDEN_SIZE=768
+NUM_ATTN_HEADS=12
+GLOBAL_BATCH_SIZE=256
+LR=6.0e-4
+MIN_LR=6.0e-5
+
+## GPT-3 XL 1.3B
+# MODEL_SIZE=1.3
+# NUM_LAYERS=24
+# HIDDEN_SIZE=2048
+# NUM_ATTN_HEADS=16
+# GLOBAL_BATCH_SIZE=512
+# LR=2.0e-4
+# MIN_LR=2.0e-5
+
+# GPT-3 2.7B
+# MODEL_SIZE=2.7
+# NUM_LAYERS=32
+# HIDDEN_SIZE=2560
+# NUM_ATTN_HEADS=32
+# GLOBAL_BATCH_SIZE=512
+# LR=1.6e-4
+# MIN_LR=1.6e-5
+
+# # GPT-3 6.7B
+# MODEL_SIZE=6.7
+# NUM_LAYERS=32
+# HIDDEN_SIZE=4096
+# NUM_ATTN_HEADS=32
+# GLOBAL_BATCH_SIZE=1024
+# LR=1.2e-4
+# MIN_LR=1.2e-5
+
+# GPT-3 13B
+MODEL_SIZE=13
+NUM_LAYERS=40
+HIDDEN_SIZE=5120
+NUM_ATTN_HEADS=40
+GLOBAL_BATCH_SIZE=1024
+LR=1.0e-4
+MIN_LR=1.0e-5
+
+# GPT-3 30B
+# MODEL_SIZE=13
+# NUM_LAYERS=60
+# HIDDEN_SIZE=6640
+# NUM_ATTN_HEADS=40
+# GLOBAL_BATCH_SIZE=1024
+# LR=1.0e-4
+# MIN_LR=1.0e-5
 # python -m torch.distributed.launch $DISTRIBUTED_ARGS \
-deepspeed --hostfile /home/mccxadmin/yehua/ds/Megatron-DeepSpeed/examples/MoE/hostfile \
+deepspeed --hostfile ./hostfile \
        pretrain_gpt.py \
        --deepspeed \
-       --deepspeed_config /home/mccxadmin/yehua/ds/Megatron-DeepSpeed/mccl_example/ds_zero_offload.config \
+       --deepspeed_config ./ds_zero_offload.config \
        --no-pipeline-parallel \
-       --num-layers 4 \
-       --hidden-size 1024 \
-       --num-attention-heads 16 \
-       --micro-batch-size 2 \
+       --num-layers $NUM_LAYERS \
+       --hidden-size $HIDDEN_SIZE \
+       --num-attention-heads $NUM_ATTN_HEADS \
+       --micro-batch-size 1 \
        --global-batch-size 8 \
        --seq-length 1024 \
        --max-position-embeddings 1024 \
@@ -54,4 +107,7 @@ deepspeed --hostfile /home/mccxadmin/yehua/ds/Megatron-DeepSpeed/examples/MoE/ho
        --eval-interval 1000 \
        --eval-iters 10 \
        --tensor-model-parallel-size 8 \
-       --zero-stage=3
+       --zero-stage 3 \
+       --cpu-optimizer \
+       --no-bias-dropout-fusion
+

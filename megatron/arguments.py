@@ -653,7 +653,7 @@ def _add_distributed_args(parser):
     group.add_argument('--num-layers-per-virtual-pipeline-stage', type=int, default=None,
                        help='Number of layers per virtual pipeline stage')
     group.add_argument('--distributed-backend', default='nccl',
-                       choices=['nccl', 'gloo', 'ccl'],
+                       choices=['nccl', 'gloo', 'ccl', 'mccl'],
                        help='Which backend to use for distributed training.')
     group.add_argument('--DDP-impl', default='local',
                        choices=['local', 'torch'],
@@ -665,6 +665,8 @@ def _add_distributed_args(parser):
     group.add_argument('--no-scatter-gather-tensors-in-pipeline', action='store_false',
                        help='Use scatter/gather to optimize communication of tensors in pipeline',
                        dest='scatter_gather_tensors_in_pipeline')
+    group.add_argument('--local-rank', type=int, default=None,
+                       help='local rank passed from distributed launcher.')
     group.add_argument('--local_rank', type=int, default=None,
                        help='local rank passed from distributed launcher.')
     group.add_argument('--lazy-mpu-init', type=bool, required=False,
@@ -857,7 +859,7 @@ def _add_zero_args(parser):
     """Text generate arguments."""
 
     group = parser.add_argument_group('ZeRO configurations', 'configurations')
-    group.add_argument("--zero-stage", type=int, default=1.0)
+    group.add_argument("--zero-stage", type=int, default=0)
     group.add_argument('--zero-reduce-scatter', action='store_true',
                        help='Use reduce scatter if specified')
     group.add_argument('--zero-contigious-gradients', action='store_true',

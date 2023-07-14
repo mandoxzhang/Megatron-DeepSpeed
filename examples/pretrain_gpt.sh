@@ -5,8 +5,8 @@
 RANK=0
 WORLD_SIZE=1
 
-DATA_PATH=<Specify path and file prefix>_text_document
-CHECKPOINT_PATH=<Specify path>
+DATA_PATH=./
+CHECKPOINT_PATH=./
 
 
 python pretrain_gpt.py \
@@ -26,7 +26,7 @@ python pretrain_gpt.py \
        --merge-file gpt2-merges.txt \
        --data-impl mmap \
        --split 949,50,1 \
-       --distributed-backend nccl \
+       --distributed-backend mccl \
        --lr 0.00015 \
        --min-lr 1.0e-5 \
        --lr-decay-style cosine \
@@ -37,5 +37,4 @@ python pretrain_gpt.py \
        --log-interval 100 \
        --save-interval 10000 \
        --eval-interval 1000 \
-       --eval-iters 10 \
-       --fp16
+       --eval-iters 10 

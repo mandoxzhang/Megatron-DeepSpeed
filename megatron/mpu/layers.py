@@ -90,8 +90,8 @@ def _initialize_affine_weight_gpu(weight, init_method,
         global get_cuda_rng_tracker
         get_cuda_rng_tracker = ds_checkpointing.get_cuda_rng_tracker
 
-    with get_cuda_rng_tracker().fork():
-        init_method(weight)
+    # with get_cuda_rng_tracker().fork():
+    init_method(weight)
 
 
 def _initialize_affine_weight_cpu(weight, output_size, input_size,

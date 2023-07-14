@@ -3,20 +3,20 @@ DIR=`pwd`
 ###############################################################################
 ### Main configs
 ## GPT-3 models use 2K sequence length/context window
-SEQ_LEN=2048
+SEQ_LEN=1024
 
 ### The "GPT-3 XXX" below are configs from GPT-3 paper
 ### https://arxiv.org/abs/2005.14165, choose based on
 ### your desired model size or build your own configs
 
 ## GPT-3 Small 125M
-# MODEL_SIZE=0.125
-# NUM_LAYERS=12
-# HIDDEN_SIZE=768
-# NUM_ATTN_HEADS=12
-# GLOBAL_BATCH_SIZE=256
-# LR=6.0e-4
-# MIN_LR=6.0e-5
+MODEL_SIZE=0.125
+NUM_LAYERS=12
+HIDDEN_SIZE=768
+NUM_ATTN_HEADS=12
+GLOBAL_BATCH_SIZE=256
+LR=6.0e-4
+MIN_LR=6.0e-5
 
 ## GPT-3 Medium 350M
 # MODEL_SIZE=0.35
@@ -55,13 +55,13 @@ SEQ_LEN=2048
 # MIN_LR=1.6e-5
 
 ## GPT-3 6.7B
-MODEL_SIZE=6.7
-NUM_LAYERS=32
-HIDDEN_SIZE=4096
-NUM_ATTN_HEADS=32
-GLOBAL_BATCH_SIZE=1024
-LR=1.2e-4
-MIN_LR=1.2e-5
+# MODEL_SIZE=6.7
+# NUM_LAYERS=32
+# HIDDEN_SIZE=4096
+# NUM_ATTN_HEADS=32
+# GLOBAL_BATCH_SIZE=1024
+# LR=1.2e-4
+# MIN_LR=1.2e-5
 
 ## GPT-3 13B
 # MODEL_SIZE=13
@@ -110,17 +110,17 @@ LR_DECAY_TOKENS=260000000000
 ### Parallelism configs
 ## Micro batch size per GPU
 ## Make sure that BATCH_SIZE <= GLOBAL_BATCH_SIZE*PP_SIZE*MP_SIZE/NUM_GPUS
-BATCH_SIZE=4
+BATCH_SIZE=2
 
 ## Model parallelism, 1 is no MP
 ## Currently MoE models have divergence issue when MP > 1.
-MP_SIZE=8
+MP_SIZE=2
 
 ## Pipeline parallelism
 ## Currently we don't support PP for MoE. To disable PP, set PP_SIZE
 ## to 1 and use the "--no-pipeline-parallel" arg.
 PP_SIZE=1
-NUM_GPUS=64
+NUM_GPUS=2
 ###############################################################################
 ### MoE configs
 ## Number of experts. EP_SIZE 1 means dense model without MoE
@@ -167,7 +167,7 @@ CL_TOKENS=$((${CL_TOKENS} * 1000000000))
 CL_STEP=$(( ${CL_TOKENS} / (${GLOBAL_BATCH_SIZE} * ${CL_AVG_SEQLEN}) ))
 ###############################################################################
 ### Misc configs
-LOG_INTERVAL=10
+LOG_INTERVAL=1
 EVAL_ITERS=10
 EVAL_INTERVAL=100
 SAVE_INTERVAL=1000
@@ -289,7 +289,6 @@ megatron_options=" \
         --clip-grad 1.0 \
         --hysteresis 2 \
         --num-workers 0 \
-        --fp16 \
         --load ${CHECKPOINT_PATH} \
         --save ${CHECKPOINT_PATH} \
         --tensorboard-queue-size 1 \
@@ -319,8 +318,8 @@ sed "s/CONFIG_BATCH_SIZE/${GLOBAL_BATCH_SIZE}/" ${template_json} \
     | sed "s/CONFIG_MBSIZE/${BATCH_SIZE}/" \
     | sed "s/LOG_INTERVAL/${LOG_INTERVAL}/" \
     | sed "s/ZERO_STAGE/0/" \
-    | sed "s/PRESCALE_GRAD/true/" \
-    | sed "s/CONFIG_FP16_ENABLED/true/" \
+    | sed "s/PRESCALE_GRAD/false/" \
+    | sed "s/CONFIG_FP16_ENABLED/false/" \
     | sed "s/CONFIG_BF16_ENABLED/false/" \
     | sed "s/CONFIG_CL_ENABLED/${CL_ENABLED}/" \
     | sed "s/CONFIG_CL_MIN/${CL_START_SEQLEN}/" \
@@ -339,12 +338,18 @@ deepspeed_options="${deepspeed_options} \
         --no-pipeline-parallel"
 fi
 
+deepspeed_options="${deepspeed_options} \
+        --no-pipeline-parallel"
+
 if [ "${ACTIVATION_CHECKPOINT}" = "true" ]; then
 deepspeed_options="${deepspeed_options} \
         --deepspeed-activation-checkpointing"
 fi
 
-run_cmd="deepspeed ${DIR}/../../pretrain_gpt.py ${megatron_options} ${data_options} ${deepspeed_options} &> ${OUTPUT_BASEPATH}/log/${NAME}_${host}_${current_time}.log"
+run_cmd="deepspeed --hostfile /home/mccxadmin/yehua/ds/Megatron-DeepSpeed/examples/MoE/hostfile ${DIR}/../../pretrain_gpt.py ${megatron_options} ${data_options} ${deepspeed_options}"
+ #&> ${OUTPUT_BASEPATH}/log/${NAME}_${host}_${current_time}.log"
 echo ${run_cmd}
-eval ${run_cmd}
+# eval ${run_cmd}
 set +x
+echo ${deepspeed_options}
+# deepspeed --hostfile hosfile /home/mccxadmin/yehua/ds/Megatron-DeepSpeed/examples/MoE/../../pretrain_gpt.py --override-lr-scheduler --adam-beta1 0.9 --adam-beta2 0.95 --tensor-model-parallel-size 2 --moe-expert-parallel-size 1 --num-experts 1 --moe-loss-coeff 0.01 --moe-train-capacity-factor 1.0 --moe-eval-capacity-factor 1.0 --moe-min-capacity 4 --init-method-std 0.01 --lr-decay-tokens 260000000000 --lr-warmup-tokens 375000000 --micro-batch-size 2 --exit-duration-in-mins 30000000 --rampup-batch-size 32 32 4882812 --global-batch-size 256 --num-layers 12 --hidden-size 768 --num-attention-heads 12 --seq-length 1024 --max-position-embeddings 1024 --train-tokens 300000000000 --train-samples 878906250 --lr 6.0e-4 --min-lr 6.0e-5 --lr-decay-style cosine --split 98,2,0 --log-interval 1 --eval-interval 100 --eval-iters 10 --save-interval 1000 --weight-decay 0.1 --clip-grad 1.0 --hysteresis 2 --num-workers 0 --load /home/mccxadmin/yehua/ds/Megatron-DeepSpeed/examples/MoE/output/checkpoint/gpt-0.125B-lr-6.0e-4-minlr-6.0e-5-bs-256-gpus-2-mp-2-pp-1 --save /home/mccxadmin/yehua/ds/Megatron-DeepSpeed/examples/MoE/output/checkpoint/gpt-0.125B-lr-6.0e-4-minlr-6.0e-5-bs-256-gpus-2-mp-2-pp-1 --tensorboard-queue-size 1 --log-timers-to-tensorboard --log-batch-size-to-tensorboard --log-validation-ppl-to-tensorboard --tensorboard-dir /home/mccxadmin/yehua/ds/Megatron-DeepSpeed/examples/MoE/output/tensorboard/gpt-0.125B-lr-6.0e-4-minlr-6.0e-5-bs-256-gpus-2-mp-2-pp-1_worker2_2023.07.10-21.07.34 --checkpoint-activations --vocab-file /data/the_pile_public_merged_nopreprocessing/gpt2-vocab.json --merge-file /data/the_pile_public_merged_nopreprocessing/gpt2-merges.txt --data-path /data/the_pile_public_merged_nopreprocessing/pile_text_document --data-impl mmap --deepspeed --deepspeed_config ds_config_gpt_gpt-0.125B-lr-6.0e-4-minlr-6.0e-5-bs-256-gpus-2-mp-2-pp-1.json --pipeline-model-parallel-size 1 --deepspeed-activation-checkpointing &> /home/mccxadmin/yehua/ds/Megatron-DeepSpeed/examples/MoE/output/log/gpt-0.125B-lr-6.0e-4-minlr-6.0e-5-bs-256-gpus-2-mp-2-pp-1_worker2_2023.07.10-21.07.34.log

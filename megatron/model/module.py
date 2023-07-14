@@ -23,9 +23,9 @@ from megatron import get_args
 from megatron import mpu
 
 
-_FLOAT_TYPES = (torch.FloatTensor, get_accelerator().FloatTensor)
-_HALF_TYPES = (torch.HalfTensor, get_accelerator().HalfTensor)
-_BF16_TYPES = (torch.BFloat16Tensor, get_accelerator().BFloat16Tensor)
+# _FLOAT_TYPES = (torch.FloatTensor, get_accelerator().FloatTensor)
+# _HALF_TYPES = (torch.HalfTensor, get_accelerator().HalfTensor)
+# _BF16_TYPES = (torch.BFloat16Tensor, get_accelerator().BFloat16Tensor)
 
 
 

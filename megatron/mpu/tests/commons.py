@@ -43,8 +43,9 @@ def initialize_distributed(backend='nccl'):
     """Initialize torch.distributed."""
     # Get local rank in case it is provided.
     parser = argparse.ArgumentParser()
-    parser.add_argument('--local_rank', type=int, default=None,
-                        help='local rank passed from distributed launcher')
+    args.local_rank = int(os.environ['LOCAL_RANK'])
+    # parser.add_argument('--local_rank', type=int, default=None,
+    #                     help='local rank passed from distributed launcher')
     args = parser.parse_args()
     local_rank = args.local_rank
 

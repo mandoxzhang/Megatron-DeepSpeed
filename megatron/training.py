@@ -105,17 +105,17 @@ def pretrain(train_valid_test_dataset_provider,
     # This will be closer to what scheduler will see (outside of
     # image ... launches.
     global _TRAIN_START_TIME
-    start_time_tensor = get_accelerator().FloatTensor([_TRAIN_START_TIME])
-    torch.distributed.all_reduce(start_time_tensor,
-                                 op=torch.distributed.ReduceOp.MIN)
-    _TRAIN_START_TIME = start_time_tensor.item()
-    print_rank_0('time to initialize megatron (seconds): {:.3f}'.format(
-        time.time() - _TRAIN_START_TIME))
+    # start_time_tensor = get_accelerator().FloatTensor([_TRAIN_START_TIME])
+    # torch.distributed.all_reduce(start_time_tensor,
+    #                              op=torch.distributed.ReduceOp.MIN)
+    # _TRAIN_START_TIME = start_time_tensor.item()
+    # print_rank_0('time to initialize megatron (seconds): {:.3f}'.format(
+    #     time.time() - _TRAIN_START_TIME))
     print_datetime('after megatron is initialized')
 
     args = get_args()
     timers = get_timers()
-
+    
     if args.deepspeed:
         args.deepspeed_configuration = json.load(
             open(args.deepspeed_config, 'r', encoding='utf-8'))
@@ -608,6 +608,7 @@ def train_step(forward_step_func, data_iterator,
     losses_reduced = forward_backward_func(
         forward_step_func, data_iterator, model,
         optimizer, timers, forward_only=False)
+    print('heheheh', losses_reduced)
     if args.mos or args.kd:
         args.teacher_forward = False
 
@@ -714,7 +715,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
     for key in loss_dict:
         if not skipped_iter:
             total_loss_dict[key] = total_loss_dict.get(
-                key, get_accelerator().FloatTensor([0.0])) + loss_dict[key]
+                key, torch.FloatTensor([0.0]).to('musa')) + loss_dict[key]
         else:
             value = loss_dict[key].float().sum().item()
             is_nan = value == float('inf') or \
@@ -941,7 +942,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
                       float(max(1, total_loss_dict[advanced_iters_key]))
                 if avg > 0.0:
                     log_string += ' {}: {:.6E} |'.format(key, avg)
-                total_loss_dict[key] = get_accelerator().FloatTensor([0.0])
+                total_loss_dict[key] = torch.FloatTensor([0.0]).to('musa')
         if loss_scale is not None:
             log_string += ' loss scale: {:.1f} |'.format(loss_scale)
         if grad_norm is not None:
@@ -1303,18 +1304,18 @@ def build_train_valid_test_data_iterators(
         do_valid = valid_dataloader is not None and args.eval_iters > 0
         do_test = test_dataloader is not None and args.eval_iters > 0
         # Need to broadcast num_tokens and num_type_tokens.
-        flags = get_accelerator().LongTensor(
-            [int(do_train), int(do_valid), int(do_test)])
+        # flags = get_accelerator().LongTensor(
+        #     [int(do_train), int(do_valid), int(do_test)])
     else:
-        flags = get_accelerator().LongTensor([0, 0, 0])
+        flags = torch.LongTensor([0, 0, 0]).to('musa')
 
     # Broadcast num tokens.
-    torch.distributed.broadcast(flags,
-                                mpu.get_tensor_model_parallel_src_rank(),
-                                group=mpu.get_tensor_model_parallel_group())
-    args.do_train = flags[0].item()
-    args.do_valid = flags[1].item()
-    args.do_test = flags[2].item()
+    # torch.distributed.broadcast(flags,
+    #                             mpu.get_tensor_model_parallel_src_rank(),
+    #                             group=mpu.get_tensor_model_parallel_group())
+    args.do_train = True
+    args.do_valid = False
+    args.do_test = False
 
 
     # Build iterators.
